@@ -30,58 +30,70 @@ import re
 
 
 class EmailValidator(object):
+	def __init__(self):
+		self.domaincache = set()
+		self.nslookupinstalled = False
 
-    def nslookup_installed(self):
-        p = subprocess.Popen(['which', 'nslookup'], stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
-        out, err = p.communicate()
+	def nslookup_installed(self):
+		p = subprocess.Popen(['which', 'nslookup'], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		out, err = p.communicate()
 
-        try:
-            assert out
-        except:
-            raise Exception("nslookup not installed/path not set!" + err)
+		try:
+			assert out
+		except:
+			raise Exception("nslookup not installed/path not set!" + err)
 
-        return True
+		self.nslookuptinstalled = True
+		return True
 
-    def valid_mx(self, domain):
-        try:
-            self.nslookup_installed()
-        except:
-            raise
+	def valid_mx(self, domain):
+		if domain in self.domaincache:
+			return True
 
-        p = subprocess.Popen(['nslookup', '-query=mx', domain], stdout=subprocess.PIPE,
-                             stderr=subprocess.PIPE)
-        out, err = p.communicate()
+		if not self.nslookupinstalled:
+			try:
+				self.nslookup_installed()
+			except:
+				raise
 
-        try:
-            return bool(re.search('mail exchanger', out))
-        except:
-            raise Exception("Exception in DNS lookup!" + err)
+		p = subprocess.Popen(['nslookup', '-query=mx', domain], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+		out, err = p.communicate()
 
-        
+		try:
+			domain_ok = bool(re.search('mail exchanger', out))
+		except:
+			raise Exception("Exception in DNS lookup!" + err)
 
-    def is_valid(self, email=None):
+		if domain_ok:
+			self.domaincache.add(domain)
+			return True
+		else:
+			return False
 
-        if not email:
-            return False
+	def is_valid(self, email=None):
+		if not email:
+			return False
 
-        # RFC 3696
-        # In addition to restrictions on syntax, there is a length limit on email addresses.
-        # That limit is a maximum of 64 characters (octets) in the "local part" (before the "@")
-        # and a maximum of 255 characters (octets) in the domain part (after the "@") for a total
-        # length of 320 characters. However, there is a restriction in RFC 2821 on the length of
-        # an address in MAIL and RCPT commands of 254 characters. Since addresses that do not fit
-        # in those fields are not normally useful, the upper limit on address lengths should
-        # normally be considered to be 254.
+		# RFC 3696
+		# In addition to restrictions on syntax, there is a length limit on email addresses.
+		# That limit is a maximum of 64 characters (octets) in the "local part" (before the "@")
+		# and a maximum of 255 characters (octets) in the domain part (after the "@") for a total
+		# length of 320 characters. However, there is a restriction in RFC 2821 on the length of
+		# an address in MAIL and RCPT commands of 254 characters. Since addresses that do not fit
+		# in those fields are not normally useful, the upper limit on address lengths should
+		# normally be considered to be 254.
 
-        if len(email) > 254:
-            return False
+		if len(email) > 254:
+			return False
 
-        parts = email.split('@')
-        if len(parts) > 2 or len(parts[0]) > 64 or len(parts[1]) > 255:
-            return False
+		if '@' not in email:
+			return False
 
-        if not re.match('[a-z0-9\!\#\$\%\&\'\*\+\/\=\?\^\_\`\{\|\}\~\-]+(?:\.[a-z0-9\!\#\$\%\&\'\*\+\/\=\?\^\_\`\{\|\}\~\-]+)*', email.lower()):
-            return False
-        #  A valid mail exchange server is configured!
-        return self.valid_mx(parts[1])
+		parts = email.split('@')
+		if len(parts) > 2 or len(parts[0]) > 64 or len(parts[1]) > 255:
+			return False
+
+		if not re.match('[a-z0-9\!\#\$\%\&\'\*\+\/\=\?\^\_\`\{\|\}\~\-]+(?:\.[a-z0-9\!\#\$\%\&\'\*\+\/\=\?\^\_\`\{\|\}\~\-]+)*', email.lower()):
+			return False
+		#  A valid mail exchange server is configured!
+		return self.valid_mx(parts[1])
